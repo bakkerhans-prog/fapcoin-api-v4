@@ -1,5 +1,7 @@
-import { Connection, PublicKey } from "@solana/web3.js";
-import * as BufferLayout from "@solana/buffer-layout";
+import solanaWeb3 from "@solana/web3.js";
+import * as BufferLayout from "buffer-layout";
+
+const { Connection, PublicKey } = solanaWeb3;
 
 // Jupiter Lock Program ID
 const LOCK_PROGRAM_ID = new PublicKey(
@@ -11,7 +13,7 @@ const TOKEN_MINT = new PublicKey(
   "8vGr1eX9vfpootWiUPYa5kYoGx9bTuRy2Xc4dNMrpump"
 );
 
-// RPC (use a GOOD provider)
+// RPC (use a reliable provider)
 const RPC = "https://api.mainnet-beta.solana.com";
 
 const connection = new Connection(RPC, "confirmed");
@@ -41,9 +43,8 @@ const VestingEscrowLayout = BufferLayout.struct([
 
 export default async function handler(req, res) {
   try {
-    // 1. Get all accounts owned by Jupiter Lock program
     const accounts = await connection.getProgramAccounts(LOCK_PROGRAM_ID, {
-      dataSlice: { offset: 0, length: 288 }, // VestingEscrow size
+      dataSlice: { offset: 0, length: 288 },
     });
 
     const holders = [];
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
         const info = VestingEscrowLayout.decode(acc.account.data);
 
         const tokenMint = new PublicKey(info.token_mint).toBase58();
-        if (tokenMint !== TOKEN_MINT.toBase58()) continue; // Skip non-FAPCOIN
+        if (tokenMint !== TOKEN_MINT.toBase58()) continue;
 
         const recipient = new PublicKey(info.recipient).toBase58();
 
@@ -77,6 +78,7 @@ export default async function handler(req, res) {
       holders,
     });
   } catch (err) {
+    console.error("Lock API error:", err);
     res.status(500).json({ error: String(err) });
   }
 }
