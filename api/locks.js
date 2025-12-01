@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import * as BufferLayout from "buffer-layout";
+import * as BufferLayout from "@solana/buffer-layout";
 
 // Jupiter Lock Program ID
 const LOCK_PROGRAM_ID = new PublicKey(
@@ -13,9 +13,10 @@ const TOKEN_MINT = new PublicKey(
 
 // RPC (use a GOOD provider)
 const RPC = "https://api.mainnet-beta.solana.com";
+
 const connection = new Connection(RPC, "confirmed");
 
-// Minimal VestingEscrow layout (matches Rust struct size = 288)
+// Minimal VestingEscrow layout
 const VestingEscrowLayout = BufferLayout.struct([
   BufferLayout.blob(32, "recipient"),
   BufferLayout.blob(32, "token_mint"),
@@ -40,64 +41,42 @@ const VestingEscrowLayout = BufferLayout.struct([
 
 export default async function handler(req, res) {
   try {
-    // Fetch accounts with dataSlice set to the expected size (optional optimization)
+    // 1. Get all accounts owned by Jupiter Lock program
     const accounts = await connection.getProgramAccounts(LOCK_PROGRAM_ID, {
-      dataSlice: { offset: 0, length: 288 },
+      dataSlice: { offset: 0, length: 288 }, // VestingEscrow size
     });
 
     const holders = [];
 
     for (const acc of accounts) {
       try {
-        // Ensure we have a Node Buffer before decoding
-        let raw = acc.account?.data;
-        if (!raw) continue;
+        const info = VestingEscrowLayout.decode(acc.account.data);
 
-        // If raw is an array or Uint8Array, convert to Buffer
-        const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
-
-        // sanity check length
-        if (buf.length < 288) {
-          // skip short/unexpected data
-          continue;
-        }
-
-        const info = VestingEscrowLayout.decode(buf);
-
-        // token_mint and recipient are raw bytes — build Pubkeys
         const tokenMint = new PublicKey(info.token_mint).toBase58();
-        if (tokenMint !== TOKEN_MINT.toBase58()) continue; // Not FAPCOIN lock
+        if (tokenMint !== TOKEN_MINT.toBase58()) continue; // Skip non-FAPCOIN
 
         const recipient = new PublicKey(info.recipient).toBase58();
 
-        // compute total vesting and locked amount
-        const totalVesting =
+        const totalLocked =
           Number(info.cliff_unlock_amount) +
           Number(info.amount_per_period) * Number(info.number_of_period);
 
-        const claimed = Number(info.total_claimed_amount) || 0;
-        const locked = Math.max(0, totalVesting - claimed);
-
         holders.push({
           recipient,
-          locked,
-          totalVesting,
+          totalLocked,
           escrowAccount: acc.pubkey.toBase58(),
         });
-      } catch (innerErr) {
-        // Log decode/parsing errors so we can diagnose — don't crash the whole function
-        console.warn("Skipping account (decode error):", String(innerErr));
-        continue;
+      } catch (e) {
+        // skip unparseable accounts
       }
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       token: TOKEN_MINT.toBase58(),
       count: holders.length,
       holders,
     });
   } catch (err) {
-    console.error("Handler top-level error:", err);
-    return res.status(500).json({ error: String(err) });
+    res.status(500).json({ error: String(err) });
   }
 }
