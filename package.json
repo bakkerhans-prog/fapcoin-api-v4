@@ -1,18 +1,14 @@
 {
-  "name": "fapcoin-api-v4",
+  "name": "fapcoin-api",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+  "description": "FAPCOIN lock holders API",
+  "main": "api/locks.js",
+  "type": "commonjs",
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.83.0",
-    "@solana/buffer-layout": "^1.0.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "cors": "^2.8.5",
-    "node-fetch": "^3.3.2"
+    "@solana/web3.js": "^1.78.0",
+    "@solana/buffer-layout": "^4.0.1"
   }
 }
