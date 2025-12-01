@@ -8,7 +8,7 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.78.0",
-    "@solana/buffer-layout": "^4.0.1"
+  "@solana/web3.js": "^1.81.0",
+  "buffer-layout": "^3.0.0"
   }
 }
