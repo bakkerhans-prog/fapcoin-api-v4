@@ -1,22 +1,24 @@
-import { Connection, PublicKey } from "@solana/web3.js";
+// api/locks.js
+
+import pkg from "@solana/web3.js";
+const { Connection, PublicKey } = pkg;
 import * as BufferLayout from "buffer-layout";
 
-// Jupiter Lock Program ID
+// ---------------------- CONFIG ----------------------
 const LOCK_PROGRAM_ID = new PublicKey(
   "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn"
 );
 
-// FAPCOIN mint
 const TOKEN_MINT = new PublicKey(
   "8vGr1eX9vfpootWiUPYa5kYoGx9bTuRy2Xc4dNMrpump"
 );
 
-// RPC
+// Use a reliable RPC provider
 const RPC = "https://api.mainnet-beta.solana.com";
-const connection = new Connection(RPC, "confirmed");
+const connection = new Connection(RPC, { commitment: "confirmed" });
 
-// Minimal V2 VestingEscrow layout (adjusted to V2 fields we need)
-const VestingEscrowV2Layout = BufferLayout.struct([
+// ---------------------- V2 VESTING ESCROW LAYOUT ----------------------
+const VestingEscrowLayout = BufferLayout.struct([
   BufferLayout.blob(32, "recipient"),
   BufferLayout.blob(32, "token_mint"),
   BufferLayout.blob(32, "creator"),
@@ -35,23 +37,25 @@ const VestingEscrowV2Layout = BufferLayout.struct([
   BufferLayout.nu64("vesting_start_time"),
   BufferLayout.nu64("cancelled_at"),
   BufferLayout.nu64("padding1"),
-  BufferLayout.blob(16 * 5, "buffer") // 5 x u128
+  BufferLayout.blob(16 * 5, "buffer"), // 5 x u128
 ]);
 
+// ---------------------- HANDLER ----------------------
 export default async function handler(req, res) {
   try {
+    // Fetch all accounts owned by the Jupiter Lock program
     const accounts = await connection.getProgramAccounts(LOCK_PROGRAM_ID, {
-      dataSlice: { offset: 0, length: 288 } // only first 288 bytes to save memory
+      dataSlice: { offset: 0, length: 288 }, // only the first 288 bytes (VestingEscrow size)
     });
 
     const holders = [];
 
     for (const acc of accounts) {
       try {
-        const info = VestingEscrowV2Layout.decode(acc.account.data);
+        const info = VestingEscrowLayout.decode(acc.account.data);
 
         const tokenMint = new PublicKey(info.token_mint).toBase58();
-        if (tokenMint !== TOKEN_MINT.toBase58()) continue; // skip non-FAPCOIN
+        if (tokenMint !== TOKEN_MINT.toBase58()) continue; // skip other tokens
 
         const recipient = new PublicKey(info.recipient).toBase58();
 
@@ -62,19 +66,20 @@ export default async function handler(req, res) {
         holders.push({
           recipient,
           totalLocked,
-          escrowAccount: acc.pubkey.toBase58()
+          escrowAccount: acc.pubkey.toBase58(),
         });
       } catch (e) {
-        // skip malformed accounts
+        console.error("Failed to parse account", acc.pubkey.toBase58(), e);
       }
     }
 
     res.status(200).json({
       token: TOKEN_MINT.toBase58(),
       count: holders.length,
-      holders
+      holders,
     });
   } catch (err) {
+    console.error("Function crashed:", err);
     res.status(500).json({ error: String(err) });
   }
 }
