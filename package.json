@@ -1,13 +1,9 @@
 {
   "name": "fapcoin-api",
   "version": "1.0.0",
-  "description": "API for fetching FAPCOIN locked and free tokens",
-  "main": "index.js",
-  "scripts": {
-    "start": "vercel dev"
-  },
+  "type": "module",
   "dependencies": {
-    "@solana/web3.js": "^1.81.0",
-    "@solana/buffer-layout": "^6.0.1"
+    "@solana/web3.js": "^1.91.5",
+    "buffer-layout": "^1.2.0"
   }
 }
