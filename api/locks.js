@@ -1,15 +1,23 @@
-import { Connection, PublicKey } from "@solana/web3.js";
-import * as BufferLayout from "@solana/buffer-layout";
+const solanaWeb3 = require("@solana/web3.js");
+const BufferLayout = require("@solana/buffer-layout");
 
+const { Connection, PublicKey } = solanaWeb3;
+
+// Jupiter Lock Program ID
 const LOCK_PROGRAM_ID = new PublicKey(
   "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn"
 );
+
+// FAPCOIN mint
 const TOKEN_MINT = new PublicKey(
   "8vGr1eX9vfpootWiUPYa5kYoGx9bTuRy2Xc4dNMrpump"
 );
+
+// RPC (mainnet-beta)
 const RPC = "https://api.mainnet-beta.solana.com";
 const connection = new Connection(RPC, "confirmed");
 
+// Minimal VestingEscrow layout (first fields we need)
 const VestingEscrowLayout = BufferLayout.struct([
   BufferLayout.blob(32, "recipient"),
   BufferLayout.blob(32, "token_mint"),
@@ -29,31 +37,40 @@ const VestingEscrowLayout = BufferLayout.struct([
   BufferLayout.nu64("vesting_start_time"),
   BufferLayout.nu64("cancelled_at"),
   BufferLayout.nu64("padding1"),
-  BufferLayout.blob(16 * 5, "buffer")
+  BufferLayout.blob(16 * 5, "buffer") // 5 x u128
 ]);
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   try {
+    // 1️⃣ Get all accounts owned by the Jupiter Lock program
     const accounts = await connection.getProgramAccounts(LOCK_PROGRAM_ID, {
-      dataSlice: { offset: 0, length: 288 },
-      filters: [
-        { memcmp: { offset: 32, bytes: TOKEN_MINT.toBase58() } } // token_mint filter
-      ]
+      dataSlice: { offset: 0, length: 288 } // VestingEscrow size
     });
 
-    const holders = accounts.map(acc => {
-      const info = VestingEscrowLayout.decode(acc.account.data);
-      const recipient = new PublicKey(info.recipient).toBase58();
-      const totalLocked =
-        Number(info.cliff_unlock_amount) +
-        Number(info.amount_per_period) * Number(info.number_of_period);
+    const holders = [];
 
-      return {
-        recipient,
-        totalLocked,
-        escrowAccount: acc.pubkey.toBase58()
-      };
-    });
+    for (const acc of accounts) {
+      try {
+        const info = VestingEscrowLayout.decode(acc.account.data);
+
+        const tokenMint = new PublicKey(info.token_mint).toBase58();
+        if (tokenMint !== TOKEN_MINT.toBase58()) continue;
+
+        const recipient = new PublicKey(info.recipient).toBase58();
+
+        const totalLocked =
+          Number(info.cliff_unlock_amount) +
+          Number(info.amount_per_period) * Number(info.number_of_period);
+
+        holders.push({
+          recipient,
+          totalLocked,
+          escrowAccount: acc.pubkey.toBase58()
+        });
+      } catch (e) {
+        // skip unparseable accounts
+      }
+    }
 
     res.status(200).json({
       token: TOKEN_MINT.toBase58(),
@@ -61,6 +78,7 @@ export default async function handler(req, res) {
       holders
     });
   } catch (err) {
+    console.error("Error in /api/locks:", err);
     res.status(500).json({ error: String(err) });
   }
-}
+};
